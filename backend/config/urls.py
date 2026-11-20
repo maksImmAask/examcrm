@@ -8,14 +8,12 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
-
 urlpatterns = [
     path("admin/", admin.site.urls),
 
-    # API
     path("api/groups/", include("apps.groups.urls")),
+    path("api/questions/", include("apps.questions.urls")),
 
-    # API documentation
     path(
         "api/schema/",
         SpectacularAPIView.as_view(),
@@ -24,17 +22,13 @@ urlpatterns = [
 
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(
-            url_name="schema",
-        ),
+        SpectacularSwaggerView.as_view(url_name="schema"),
         name="swagger-ui",
     ),
 
     path(
         "api/redoc/",
-        SpectacularRedocView.as_view(
-            url_name="schema",
-        ),
+        SpectacularRedocView.as_view(url_name="schema"),
         name="redoc",
     ),
 ]

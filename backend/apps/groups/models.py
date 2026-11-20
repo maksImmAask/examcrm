@@ -14,12 +14,23 @@ class StudyGroup(models.Model):
         verbose_name="Описание",
     )
 
+    # Основной преподаватель группы.
+    # Оставляем это поле для совместимости с существующими данными.
     teacher = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="teaching_groups",
         limit_choices_to={"role__in": ["teacher", "admin"]},
-        verbose_name="Преподаватель",
+        verbose_name="Основной преподаватель",
+    )
+
+    # Дополнительные преподаватели группы.
+    teachers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="managed_study_groups",
+        limit_choices_to={"role": "teacher"},
+        verbose_name="Преподаватели",
     )
 
     students = models.ManyToManyField(

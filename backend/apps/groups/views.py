@@ -1,14 +1,18 @@
 
+from django.db.models import Q
+
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 
 from apps.users.models import User
+
 from .models import StudyGroup
 from .serializers import StudyGroupSerializer
 from .permissions import StudyGroupPermission
 
 
 class StudyGroupViewSet(viewsets.ModelViewSet):
+
     serializer_class = StudyGroupSerializer
     permission_classes = [StudyGroupPermission]
 
@@ -18,14 +22,17 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
         queryset = StudyGroup.objects.select_related(
             "teacher"
         ).prefetch_related(
-            "students"
+            "teachers",
+            "students",
         )
 
         if user.role == User.Role.ADMIN:
             return queryset
 
         if user.role == User.Role.TEACHER:
-            return queryset.filter(teacher=user)
+            return queryset.filter(
+                Q(teacher=user) | Q(teachers=user)
+            ).distinct()
 
         if user.role == User.Role.STUDENT:
             return queryset.filter(students=user)
@@ -50,11 +57,10 @@ class StudyGroupViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user = self.request.user
 
-        if user.role == User.Role.TEACHER:
-            serializer.save(teacher=user)
-            return
-
-        if user.role == User.Role.ADMIN:
+        if user.role in [
+            User.Role.ADMIN,
+            User.Role.TEACHER,
+        ]:
             serializer.save()
             return
 

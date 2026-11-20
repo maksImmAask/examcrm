@@ -6,6 +6,7 @@ from .models import StudyGroup
 
 @admin.register(StudyGroup)
 class StudyGroupAdmin(admin.ModelAdmin):
+
     list_display = [
         "id",
         "name",
@@ -24,9 +25,13 @@ class StudyGroupAdmin(admin.ModelAdmin):
         "teacher__username",
         "teacher__first_name",
         "teacher__last_name",
+        "teachers__username",
+        "teachers__first_name",
+        "teachers__last_name",
     ]
 
     filter_horizontal = [
+        "teachers",
         "students",
     ]
 
@@ -34,3 +39,11 @@ class StudyGroupAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     ]
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+
+        group = form.instance
+
+        if group.teacher.role == "teacher":
+            group.teachers.add(group.teacher)

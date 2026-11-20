@@ -3,16 +3,6 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class StudyGroupPermission(BasePermission):
-    """
-    Администратор:
-        полный доступ.
-
-    Преподаватель:
-        доступ только к своим группам.
-
-    Студент:
-        только просмотр групп, в которых состоит.
-    """
 
     def has_permission(self, request, view):
         return (
@@ -27,7 +17,10 @@ class StudyGroupPermission(BasePermission):
             return True
 
         if user.role == "teacher":
-            return obj.teacher_id == user.id
+            return (
+                obj.teacher_id == user.id
+                or obj.teachers.filter(id=user.id).exists()
+            )
 
         if user.role == "student":
             return (
