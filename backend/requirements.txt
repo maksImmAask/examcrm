@@ -1,0 +1,12 @@
+Django>=5.2,<7.0
+djangorestframework
+psycopg[binary]
+channels
+channels-redis
+daphne
+celery
+redis
+django-cors-headers
+django-filter
+drf-spectacular
+python-dotenv
