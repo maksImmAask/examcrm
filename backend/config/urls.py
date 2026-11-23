@@ -1,4 +1,3 @@
-
 from django.contrib import admin
 from django.urls import path, include
 
@@ -8,24 +7,28 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
+
 urlpatterns = [
     path("admin/", admin.site.urls),
 
-    path("api/groups/", include("apps.groups.urls")),
-    path("api/questions/", include("apps.questions.urls")),
+    path("api/v1/", include("apps.users.urls")),
+    path("api/v1/", include("apps.groups.urls")),
+    path("api/v1/", include("apps.questions.urls")),
+    path("api/v1/", include("apps.exams.urls")),
+    path("api/v1/", include("apps.attempts.urls")),
+    path("api/v1/", include("apps.grading.urls")),
+    path("api/v1/", include("apps.results.urls")),
 
     path(
         "api/schema/",
         SpectacularAPIView.as_view(),
         name="schema",
     ),
-
     path(
         "api/docs/",
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="swagger-ui",
     ),
-
     path(
         "api/redoc/",
         SpectacularRedocView.as_view(url_name="schema"),

@@ -2,7 +2,6 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from apps.users.models import User
 from .models import Question, QuestionOption
 
 
@@ -18,6 +17,21 @@ class QuestionOptionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id"]
 
+    def validate_text(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Текст варианта не может быть пустым."
+            )
+
+        if len(value) > 500:
+            raise serializers.ValidationError(
+                "Максимальная длина варианта — 500 символов."
+            )
+
+        return value
+
 
 class QuestionSerializer(serializers.ModelSerializer):
 
@@ -26,7 +40,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         required=False,
     )
 
-    teacher_name = serializers.CharField(
+    teacher_username = serializers.CharField(
         source="teacher.username",
         read_only=True,
     )
@@ -36,7 +50,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "teacher",
-            "teacher_name",
+            "teacher_username",
             "title",
             "question_type",
             "points",
@@ -46,92 +60,129 @@ class QuestionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
         read_only_fields = [
             "id",
+            "teacher",
+            "teacher_username",
             "created_at",
             "updated_at",
         ]
 
-    def validate_points(self, value):
-        if value < 1:
+    def validate_title(self, value):
+        value = value.strip()
+
+        if not value:
             raise serializers.ValidationError(
-                "Количество баллов должно быть не меньше 1."
+                "Текст вопроса не может быть пустым."
             )
+
+        if len(value) > 5000:
+            raise serializers.ValidationError(
+                "Максимальная длина вопроса — 5000 символов."
+            )
+
+        return value
+
+    def validate_explanation(self, value):
+        if len(value) > 5000:
+            raise serializers.ValidationError(
+                "Объяснение не может быть длиннее 5000 символов."
+            )
+
         return value
 
     def validate(self, attrs):
+        instance = self.instance
+
         question_type = attrs.get(
             "question_type",
-            getattr(
-                self.instance,
-                "question_type",
-                None,
-            ),
+            instance.question_type if instance else None,
         )
+        option_texts = [
+            option.get("text", "").strip().casefold()
+            for option in options
+        ]
 
-        options_data = attrs.get("options")
+        if len(option_texts) != len(set(option_texts)):
+            raise serializers.ValidationError(
+                {"options": "Тексты вариантов не должны повторяться."}
+            )
 
-        if options_data is None:
-            if self.instance:
-                options_data = list(
-                    self.instance.options.values(
-                        "text",
-                        "is_correct",
-                        "order",
-                    )
+        if "options" in attrs:
+            options = attrs["options"]
+        elif instance:
+            options = list(
+                instance.options.values(
+                    "text",
+                    "is_correct",
+                    "order",
                 )
-            else:
-                options_data = []
+            )
+        else:
+            options = []
+
+        if question_type == Question.QuestionType.TEXT:
+            if options:
+                raise serializers.ValidationError(
+                    {
+                        "options": (
+                            "Текстовый вопрос не должен содержать варианты ответов. "
+                            "Передайте пустой список options."
+                        )
+                    }
+                )
+
+            return attrs
+
+        if question_type not in [
+            Question.QuestionType.SINGLE_CHOICE,
+            Question.QuestionType.MULTIPLE_CHOICE,
+        ]:
+            raise serializers.ValidationError(
+                {"question_type": "Неизвестный тип вопроса."}
+            )
+
+        if not 2 <= len(options) <= 10:
+            raise serializers.ValidationError(
+                {"options": "Нужно добавить от 2 до 10 вариантов."}
+            )
 
         correct_count = sum(
-            1 for option in options_data
+            1 for option in options
             if option.get("is_correct", False)
         )
 
         if question_type == Question.QuestionType.SINGLE_CHOICE:
-            if len(options_data) < 2:
-                raise serializers.ValidationError({
-                    "options": "Добавьте минимум два варианта ответа."
-                })
-
             if correct_count != 1:
-                raise serializers.ValidationError({
-                    "options": "Должен быть ровно один правильный вариант."
-                })
+                raise serializers.ValidationError(
+                    {
+                        "options": (
+                            "Для single_choice нужен ровно один "
+                            "правильный вариант."
+                        )
+                    }
+                )
 
-        elif question_type == Question.QuestionType.MULTIPLE_CHOICE:
-            if len(options_data) < 2:
-                raise serializers.ValidationError({
-                    "options": "Добавьте минимум два варианта ответа."
-                })
+        if question_type == Question.QuestionType.MULTIPLE_CHOICE:
+            if not 2 <= correct_count <= len(options) - 1:
+                raise serializers.ValidationError(
+                    {
+                        "options": (
+                            "Для multiple_choice нужно от 2 до n-1 "
+                            "правильных вариантов."
+                        )
+                    }
+                )
 
-            if correct_count < 1:
-                raise serializers.ValidationError({
-                    "options": "Укажите хотя бы один правильный вариант."
-                })
+        orders = [
+            option.get("order", 0)
+            for option in options
+        ]
 
-        elif question_type == Question.QuestionType.TEXT:
-            if options_data:
-                raise serializers.ValidationError({
-                    "options": "Текстовый вопрос не должен иметь вариантов."
-                })
-
-        if options_data:
-            texts = [
-                option.get("text", "").strip().casefold()
-                for option in options_data
-            ]
-
-            if any(not text for text in texts):
-                raise serializers.ValidationError({
-                    "options": "Текст варианта не может быть пустым."
-                })
-
-            if len(texts) != len(set(texts)):
-                raise serializers.ValidationError({
-                    "options": "Варианты ответов не должны повторяться."
-                })
+        if len(orders) != len(set(orders)):
+            raise serializers.ValidationError(
+                {"options": "Порядок вариантов должен быть уникальным."}
+            )
 
         return attrs
 
@@ -139,29 +190,31 @@ class QuestionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         options_data = validated_data.pop("options", [])
 
+        request = self.context["request"]
+
         question = Question.objects.create(
-            **validated_data
+            teacher=request.user,
+            **validated_data,
         )
 
         QuestionOption.objects.bulk_create([
             QuestionOption(
                 question=question,
-                **option_data,
+                text=option["text"],
+                is_correct=option.get("is_correct", False),
+                order=option.get("order", index),
             )
-            for option_data in options_data
+            for index, option in enumerate(options_data)
         ])
 
         return question
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        options_data = validated_data.pop(
-            "options",
-            None,
-        )
+        options_data = validated_data.pop("options", None)
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
 
         instance.save()
 
@@ -171,20 +224,40 @@ class QuestionSerializer(serializers.ModelSerializer):
             QuestionOption.objects.bulk_create([
                 QuestionOption(
                     question=instance,
-                    **option_data,
+                    text=option["text"],
+                    is_correct=option.get("is_correct", False),
+                    order=option.get("order", index),
                 )
-                for option_data in options_data
+                for index, option in enumerate(options_data)
             ])
 
         return instance
 
-    def validate_teacher(self, value):
-        if value.role not in [
-            User.Role.TEACHER,
-            User.Role.ADMIN,
-        ]:
-            raise serializers.ValidationError(
-                "Автором вопроса должен быть преподаватель или администратор."
-            )
 
-        return value
+
+class QuestionBankSerializer(serializers.ModelSerializer):
+
+    teacher_username = serializers.CharField(
+        source="teacher.username",
+        read_only=True,
+    )
+
+    options_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Question
+        fields = [
+            "id",
+            "teacher",
+            "teacher_username",
+            "title",
+            "question_type",
+            "points",
+            "is_active",
+            "options_count",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_options_count(self, obj):
+        return obj.options.count()
