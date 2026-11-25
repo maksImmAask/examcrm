@@ -7,7 +7,7 @@ from .views import StudyGroupViewSet
 router = DefaultRouter()
 
 router.register(
-    r"",
+    r"groups",
     StudyGroupViewSet,
     basename="study-group",
 )

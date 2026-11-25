@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.test import TestCase
-
+from rest_framework.test import APIClient
 from apps.users.models import User
 from apps.exams.models import (
     Exam,
@@ -419,3 +419,105 @@ class AttemptServiceTests(TestCase):
             ExamResult.objects.filter(attempt=attempt).count(),
             1,
         )
+    
+    def create_other_student_attempt(self):
+        other_student = User.objects.create_user(
+            username="other_student_api",
+            password="test-password",
+            role=User.Role.STUDENT,
+        )
+
+        other_assignment = ExamAssignment.objects.create(
+            publication=self.publication,
+            student=other_student,
+            source_group_ids=[],
+        )
+
+        attempt, created = start_attempt(
+            self.exam.id,
+            other_student,
+        )
+
+        self.assertTrue(created)
+        self.assertEqual(attempt.assignment, other_assignment)
+
+        return attempt
+
+    def test_student_cannot_view_another_students_attempt(self):
+        attempt = self.create_other_student_attempt()
+
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.get(
+            f"/api/v1/attempts/{attempt.id}/"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_student_cannot_save_answer_to_another_students_attempt(self):
+        attempt = self.create_other_student_attempt()
+
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.put(
+            f"/api/v1/attempts/{attempt.id}/answers/{self.question.id}/",
+            {
+                "value": str(self.correct_option.id),
+                "base_revision": 0,
+            },
+            format="json",
+            HTTP_IDEMPOTENCY_KEY=str(uuid.uuid4()),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            Answer.objects.filter(
+                attempt=attempt,
+                question=self.question,
+            ).exists()
+        )
+
+    def test_student_cannot_submit_another_students_attempt(self):
+        attempt = self.create_other_student_attempt()
+
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.post(
+            f"/api/v1/attempts/{attempt.id}/submit/"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        attempt.refresh_from_db()
+
+        self.assertEqual(
+            attempt.status,
+            Attempt.Status.IN_PROGRESS,
+        )
+
+    def test_unauthenticated_user_cannot_view_attempt(self):
+        attempt = self.create_attempt()
+
+        client = APIClient()
+
+        response = client.get(
+            f"/api/v1/attempts/{attempt.id}/"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_student_can_view_own_attempt(self):
+        attempt = self.create_attempt()
+
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.get(
+            f"/api/v1/attempts/{attempt.id}/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+

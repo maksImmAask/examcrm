@@ -7,7 +7,7 @@ from .views import QuestionViewSet
 router = DefaultRouter()
 
 router.register(
-    r"",
+    r"questions",
     QuestionViewSet,
     basename="question",
 )
